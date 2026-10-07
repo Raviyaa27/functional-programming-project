@@ -37,11 +37,11 @@ def evaluate(env, expr):
         case "let":                         # ("let", name, bound, body)
             name = expr[1]
             had_old, old = name in env, env.get(name)
-            env[name] = evaluate(env, expr[2])  # overwrite the shared dict...
+            env[name] = evaluate(env, expr[2])  # overwrite the shared dict,
             try:
                 result = evaluate(env, expr[3])
-            finally:                        # ...so restore it by hand,
-                if had_old:                 # even when an error is raised
+            finally:                        # so restore it by hand, even
+                if had_old:                 # when an error is raised
                     env[name] = old
                 else:
                     del env[name]

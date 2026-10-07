@@ -221,8 +221,10 @@ batchReport :: Env -> [Expr] -> BatchReport
 batchReport env = foldr tally (BatchReport 0 0 [] []) . evalAll env
   where
     tally :: Either String Double -> BatchReport -> BatchReport
-    tally (Right v)  r = r { succeeded = succeeded r + 1, values   = v   : values r }
-    tally (Left err) r = r { failed    = failed r + 1,    failures = err : failures r }
+    tally (Right v)  r = r { succeeded = succeeded r + 1
+                           , values    = v : values r }
+    tally (Left err) r = r { failed    = failed r + 1
+                           , failures  = err : failures r }
 
 -- | The variables an expression reads from its environment (those not
 -- bound by an enclosing @let@), without duplicates.
