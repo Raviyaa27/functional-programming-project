@@ -1,0 +1,32 @@
+# Not part of this project
+Sample Report/
+*.docx
+~$*
+
+# Haskell build output
+dist-newstyle/
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+*.exe
+.ghc.environment.*
+
+# Python
+__pycache__/
+*.pyc
+
+# LaTeX build output (the compiled report.pdf is kept)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.synctex.gz
+*.pdf
+!Project Files/report/report.pdf
