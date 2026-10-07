@@ -1,0 +1,20 @@
+Imperative (Python) evaluator - environment: {'x': 5, 'y': 2, 'z': 0}
+
+== The nine samples (expected vs actual) ==
+  [1] precedence           expected 16                                 actual 16                                 PASS
+  [2] division             expected 2.5                                actual 2.5                                PASS
+  [3] let binding          expected 11                                 actual 11                                 PASS
+  [4] let shadowing        expected 11                                 actual 11                                 PASS
+  [5] if / boolean ops     expected 2.5                                actual 2.5                                PASS
+  [6] guarded division     expected 0                                  actual 0                                  PASS
+  [7] division by zero     expected error: division by zero            actual error: division by zero            PASS
+  [8] undefined variable   expected error: undefined variable: w       actual error: undefined variable: w       PASS
+  [9] error inside let     expected error: division by zero            actual error: division by zero            PASS
+  env restored after every let: True
+
+== Bugs that only show up (or never show up) at run time ==
+  mistyped tag in a branch that does not run    -> 1
+  mistyped tag in a branch that runs            -> 'error: unknown expression tag: mull'
+  a number used as a condition                  -> 1
+  a boolean used as a number                    -> 4
+  a string literal used as a number             -> crash: TypeError: can only concatenate str (not "int") to str
