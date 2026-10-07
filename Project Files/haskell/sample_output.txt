@@ -1,0 +1,73 @@
+EC8206 Functional Programming - Expression Interpreter Demo
+Environment: x = 5, y = 2, z = 0
+
+== Part B: sample evaluations (expected vs actual) ==
+  [1] precedence
+      expression : (x + 3) * y
+      expected   : 16
+      actual     : 16                                      PASS
+  [2] division
+      expression : x / y
+      expected   : 2.5
+      actual     : 2.5                                     PASS
+  [3] let binding
+      expression : let a = x * 2 in a + 1
+      expected   : 11
+      actual     : 11                                      PASS
+  [4] let shadowing
+      expression : let x = 1 in (let x = 10 in x) + x
+      expected   : 11
+      actual     : 11                                      PASS
+  [5] if / boolean ops
+      expression : if x < 10 && not (y == 0) then x / y else 0
+      expected   : 2.5
+      actual     : 2.5                                     PASS
+  [6] guarded division
+      expression : if z == 0 then 0 else x / z
+      expected   : 0
+      actual     : 0                                       PASS
+  [7] division by zero
+      expression : x / (y - 2)
+      expected   : error: division by zero: x / (y - 2)
+      actual     : error: division by zero: x / (y - 2)    PASS
+  [8] undefined variable
+      expression : x + w
+      expected   : error: undefined variable: w
+      actual     : error: undefined variable: w            PASS
+  [9] error inside let
+      expression : let a = 1 / z in a + 1
+      expected   : error: division by zero: 1 / z
+      actual     : error: division by zero: 1 / z          PASS
+
+== Part C: simplify (before  ->  after) ==
+  x * 1 + 0                         ->  x
+  let a = x + 0 in a * 1 * y        ->  let a = x in a * y
+  2 * 3 + x * 0                     ->  6
+  x + y - (x + y)                   ->  0
+  if 1 < 2 then x / 1 else y        ->  x
+  let unused = 9 in x + y           ->  x + y
+  1 / 0                             ->  1 / 0
+  w * 0                             ->  0
+  note: 1 / 0 is left for eval to report; w * 0 -> 0 also drops the
+        'undefined variable' error, so simplify preserves successful
+        results only (see Props.hs and the report, Part E).
+
+== Part C: batch evaluation with map (eval env) ==
+  [1] 16
+  [2] 2.5
+  [3] 11
+  [4] 11
+  [5] 2.5
+  [6] 0
+  [7] error: division by zero: x / (y - 2)
+  [8] error: undefined variable: w
+  [9] error: division by zero: 1 / z
+  evalBatch   : [16, 2.5, 11, 11, 2.5, 0]
+  batchReport : 6 succeeded, 3 failed
+                - division by zero: x / (y - 2)
+                - undefined variable: w
+                - division by zero: 1 / z
+
+== Part C: static check with undefinedVars (no evaluation needed) ==
+  x + w  uses unbound w
+  (every other sample only uses bound variables)

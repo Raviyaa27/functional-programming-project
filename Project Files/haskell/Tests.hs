@@ -87,6 +87,74 @@ evalBTests =
       (evalB env (And (BLit True) (Less (Var "w") (Lit 1))))
   ]
 
+------------------------------------------------------------------------------
+-- Part C
+------------------------------------------------------------------------------
+
+x, y, a :: Expr
+x = Var "x"
+y = Var "y"
+a = Var "a"
+
+simplifyTests :: [Outcome]
+simplifyTests =
+  [ check "x + 0  ->  x"             x (simplify (Add x (Lit 0)))
+  , check "0 + x  ->  x"             x (simplify (Add (Lit 0) x))
+  , check "x - 0  ->  x"             x (simplify (Sub x (Lit 0)))
+  , check "x - x  ->  0"             (Lit 0) (simplify (Sub (Add x y) (Add x y)))
+  , check "x * 1  ->  x"             x (simplify (Mul x (Lit 1)))
+  , check "1 * x  ->  x"             x (simplify (Mul (Lit 1) x))
+  , check "x * 0  ->  0"             (Lit 0) (simplify (Mul x (Lit 0)))
+  , check "0 * x  ->  0"             (Lit 0) (simplify (Mul (Lit 0) x))
+  , check "x / 1  ->  x"             x (simplify (Div x (Lit 1)))
+  , check "constant folding"         (Lit 14) (simplify (Add (Lit 2) (Mul (Lit 3) (Lit 4))))
+  , check "n / 0 is left for eval to report" (Div (Lit 1) (Lit 0))
+      (simplify (Div (Lit 1) (Lit 0)))
+  , check "bottom-up: (x * 1) + 0  ->  x" x (simplify (Add (Mul x (Lit 1)) (Lit 0)))
+  , check "rewrites inside let"      (Let "a" x (Mul a y))
+      (simplify (Let "a" (Add x (Lit 0)) (Mul (Mul a (Lit 1)) y)))
+  , check "unused let is removed"    x (simplify (Let "a" (Lit 9) x))
+  , check "known condition picks a branch" x
+      (simplify (If (Less (Lit 1) (Lit 2)) x y))
+  , check "double negation"          (Less x (Lit 1))
+      (simplifyB (Not (Not (Less x (Lit 1)))))
+  , check "and with false"           (BLit False)
+      (simplifyB (And (BLit False) (Less (Var "w") (Lit 1))))
+  , check "nothing to simplify"      (Add x y) (simplify (Add x y))
+  , check "every sample keeps its value after simplify"
+      (map sampleExpected samples)
+      (map (eval sampleEnv . simplify . sampleExpr) samples)
+  , check "x * 0 hides an error: before" (Left "undefined variable: w")
+      (eval env (Mul (Var "w") (Lit 0)))
+  , check "x * 0 hides an error: after"  (Right 0)
+      (eval env (simplify (Mul (Var "w") (Lit 0))))
+  ]
+
+hofTests :: [Outcome]
+hofTests =
+  [ check "evalAll = map (eval env)" [Right 1, Left "undefined variable: w"]
+      (evalAll env [Lit 1, Var "w"])
+  , check "evalBatch keeps successes" [16, 2.5, 11, 11, 2.5, 0]
+      (evalBatch sampleEnv (map sampleExpr samples))
+  , check "batchReport counts (succeeded, failed)" (6, 3)
+      (let r = batchReport sampleEnv (map sampleExpr samples)
+       in (succeeded r, failed r))
+  , check "batchReport collects the errors"
+      [ "division by zero: x / (y - 2)"
+      , "undefined variable: w"
+      , "division by zero: 1 / z" ]
+      (failures (batchReport sampleEnv (map sampleExpr samples)))
+  , check "batchReport of an empty batch" (BatchReport 0 0 [] [])
+      (batchReport env [])
+  , check "freeVars skips let-bound names" ["x", "y"]
+      (freeVars (Let "a" x (Add a y)))
+  , check "freeVars has no duplicates" ["x"] (freeVars (Mul x (Add x x)))
+  , check "undefinedVars finds w only" ["w"]
+      (undefinedVars env (Add (Var "w") (Let "a" (Lit 1) a)))
+  , check "undefinedVars on a closed expression" []
+      (undefinedVars env (Mul (Add x (Lit 3)) y))
+  ]
+
 prettyTests :: [Outcome]
 prettyTests =
   [ check "brackets only where needed" "(x + 3) * y"
@@ -113,6 +181,8 @@ groups =
   [ ("Part B: sample evaluations (as in the report)", sampleTests)
   , ("Part B: eval",                                  evalTests)
   , ("Part B: evalB",                                 evalBTests)
+  , ("Part C: simplify",                              simplifyTests)
+  , ("Part C: higher-order functions",                hofTests)
   , ("Pretty printing",                               prettyTests)
   ]
 
@@ -122,10 +192,10 @@ main = do
     putStrLn ("\n== " ++ title ++ " ==")
     mapM_ report outcomes
   let everything = concatMap snd groups
-      failures   = filter (not . passed) everything
-  putStrLn ("\n" ++ show (length everything - length failures) ++ "/"
+      failing    = filter (not . passed) everything
+  putStrLn ("\n" ++ show (length everything - length failing) ++ "/"
             ++ show (length everything) ++ " tests passed.")
-  unless (null failures) exitFailure
+  unless (null failing) exitFailure
   where
     report o
       | passed o  = putStrLn ("  PASS  " ++ testName o)

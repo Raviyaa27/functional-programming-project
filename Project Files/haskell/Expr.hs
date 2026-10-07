@@ -8,6 +8,9 @@
 --
 --   * Part A  (language design) : 'Expr', 'BExpr', 'Env'
 --   * Part B  (evaluation)      : 'eval', 'evalB'
+--   * Part C  (higher-order)    : 'simplify', 'simplifyB', 'evalAll',
+--                                 'evalBatch', 'batchReport', 'freeVars',
+--                                 'undefinedVars'
 --   * Pretty printing           : 'pretty', 'prettyB'
 module Expr
   ( -- * Part A: language design
@@ -17,10 +20,22 @@ module Expr
     -- * Part B: evaluation
   , eval
   , evalB
+    -- * Part C: simplification and higher-order functions
+  , simplify
+  , simplifyB
+  , evalAll
+  , evalBatch
+  , BatchReport (..)
+  , batchReport
+  , freeVars
+  , undefinedVars
     -- * Pretty printing
   , pretty
   , prettyB
   ) where
+
+import Data.Either (rights)
+import Data.List (nub)
 
 ------------------------------------------------------------------------------
 -- Part A: language design
@@ -99,6 +114,147 @@ evalB env (Or p q)    = do
   l <- evalB env p
   if l then Right True else evalB env q     -- short-circuit, like (||)
 evalB env (Not p)     = not <$> evalB env p
+
+------------------------------------------------------------------------------
+-- Part C: simplification
+------------------------------------------------------------------------------
+
+-- | Rewrite an expression using algebraic identities.
+--
+-- The children are simplified first (bottom-up), then one rule is tried at
+-- the root. Every rule returns either an already-simplified sub-expression
+-- or a literal, so a single pass is enough: @simplify (simplify e)@ equals
+-- @simplify e@ (checked by @prop_idempotent@ in "Props").
+--
+-- Rules that throw a sub-expression away (@x * 0@, @x - x@ and an unused
+-- @let@) also throw away any error hidden inside it. So 'simplify' keeps
+-- every /successful/ result the same, but can turn a failing expression
+-- into one that succeeds (see @prop_naiveEquivalence@ in "Props").
+simplify :: Expr -> Expr
+simplify = rewrite . descend
+  where
+    -- Step 1: simplify every child, keeping the node itself.
+    descend :: Expr -> Expr
+    descend e@(Lit _)      = e
+    descend e@(Var _)      = e
+    descend (Add a b)      = Add (simplify a) (simplify b)
+    descend (Sub a b)      = Sub (simplify a) (simplify b)
+    descend (Mul a b)      = Mul (simplify a) (simplify b)
+    descend (Div a b)      = Div (simplify a) (simplify b)
+    descend (Let x e body) = Let x (simplify e) (simplify body)
+    descend (If c t e)     = If (simplifyB c) (simplify t) (simplify e)
+
+    -- Step 2: apply the first identity that matches at the root.
+    rewrite :: Expr -> Expr
+    rewrite (Add (Lit a) (Lit b)) = Lit (a + b)          -- constant folding
+    rewrite (Sub (Lit a) (Lit b)) = Lit (a - b)
+    rewrite (Mul (Lit a) (Lit b)) = Lit (a * b)
+    rewrite (Div (Lit a) (Lit b))
+      | b /= 0                    = Lit (a / b)          -- never fold n / 0
+    rewrite (Add e (Lit 0))       = e                    -- x + 0  =  x
+    rewrite (Add (Lit 0) e)       = e                    -- 0 + x  =  x
+    rewrite (Sub e (Lit 0))       = e                    -- x - 0  =  x
+    rewrite (Sub a b)
+      | a == b                    = Lit 0                -- x - x  =  0
+    rewrite (Mul e (Lit 1))       = e                    -- x * 1  =  x
+    rewrite (Mul (Lit 1) e)       = e                    -- 1 * x  =  x
+    rewrite (Mul _ (Lit 0))       = Lit 0                -- x * 0  =  0
+    rewrite (Mul (Lit 0) _)       = Lit 0                -- 0 * x  =  0
+    rewrite (Div e (Lit 1))       = e                    -- x / 1  =  x
+    rewrite (If (BLit True) t _)  = t                    -- known condition
+    rewrite (If (BLit False) _ e) = e
+    rewrite (Let x _ body)
+      | x `notElem` freeVars body = body                 -- unused binding
+    rewrite e                     = e
+
+-- | Simplify a condition. These rules mirror the short-circuit behaviour
+-- of 'evalB', so they never hide an error that evaluation would report.
+simplifyB :: BExpr -> BExpr
+simplifyB = rewriteB . descendB
+  where
+    descendB :: BExpr -> BExpr
+    descendB c@(BLit _)  = c
+    descendB (Less a b)  = Less (simplify a) (simplify b)
+    descendB (Equal a b) = Equal (simplify a) (simplify b)
+    descendB (And p q)   = And (simplifyB p) (simplifyB q)
+    descendB (Or p q)    = Or (simplifyB p) (simplifyB q)
+    descendB (Not p)     = Not (simplifyB p)
+
+    rewriteB :: BExpr -> BExpr
+    rewriteB (Less (Lit a) (Lit b))  = BLit (a < b)
+    rewriteB (Equal (Lit a) (Lit b)) = BLit (a == b)
+    rewriteB (And (BLit True) q)     = q
+    rewriteB (And (BLit False) _)    = BLit False
+    rewriteB (Or (BLit True) _)      = BLit True
+    rewriteB (Or (BLit False) q)     = q
+    rewriteB (Not (BLit b))          = BLit (not b)
+    rewriteB (Not (Not p))           = p
+    rewriteB c                       = c
+
+------------------------------------------------------------------------------
+-- Part C: higher-order functions over lists of expressions
+------------------------------------------------------------------------------
+
+-- | Evaluate many expressions against one shared environment.
+--
+-- Currying: @eval :: Env -> Expr -> Either String Double@ takes its
+-- arguments one at a time, so the partial application @eval env@ is itself
+-- a function @Expr -> Either String Double@, which 'map' applies to every
+-- expression in the list.
+evalAll :: Env -> [Expr] -> [Either String Double]
+evalAll env = map (eval env)
+
+-- | Keep only the results that succeeded (the scaffold's @evalBatch@).
+evalBatch :: Env -> [Expr] -> [Double]
+evalBatch env = rights . evalAll env
+
+-- | Summary of evaluating a batch of expressions.
+data BatchReport = BatchReport
+  { succeeded :: Int        -- ^ how many expressions evaluated successfully
+  , failed    :: Int        -- ^ how many produced an error
+  , values    :: [Double]   -- ^ the successful results, in input order
+  , failures  :: [String]   -- ^ the error messages, in input order
+  } deriving (Eq, Show)
+
+-- | Evaluate a batch and count successes versus failures in one 'foldr'.
+batchReport :: Env -> [Expr] -> BatchReport
+batchReport env = foldr tally (BatchReport 0 0 [] []) . evalAll env
+  where
+    tally :: Either String Double -> BatchReport -> BatchReport
+    tally (Right v)  r = r { succeeded = succeeded r + 1, values   = v   : values r }
+    tally (Left err) r = r { failed    = failed r + 1,    failures = err : failures r }
+
+-- | The variables an expression reads from its environment (those not
+-- bound by an enclosing @let@), without duplicates.
+freeVars :: Expr -> [String]
+freeVars = nub . go
+  where
+    go :: Expr -> [String]
+    go (Lit _)        = []
+    go (Var x)        = [x]
+    go (Add a b)      = go a ++ go b
+    go (Sub a b)      = go a ++ go b
+    go (Mul a b)      = go a ++ go b
+    go (Div a b)      = go a ++ go b
+    go (Let x e body) = go e ++ filter (/= x) (go body)   -- x is bound in body
+    go (If c t e)     = goB c ++ go t ++ go e
+
+    goB :: BExpr -> [String]
+    goB (BLit _)    = []
+    goB (Less a b)  = go a ++ go b
+    goB (Equal a b) = go a ++ go b
+    goB (And p q)   = goB p ++ goB q
+    goB (Or p q)    = goB p ++ goB q
+    goB (Not p)     = goB p
+
+-- | A static check, done without evaluating anything: the free variables
+-- of an expression that the environment does not bind. When the result is
+-- empty, 'eval' can never fail with "undefined variable"
+-- (@prop_staticCheckSound@ in "Props").
+undefinedVars :: Env -> Expr -> [String]
+undefinedVars env = filter (`notElem` bound) . freeVars
+  where
+    bound = map fst env
 
 ------------------------------------------------------------------------------
 -- Pretty printing (used in error messages and in the demo output)

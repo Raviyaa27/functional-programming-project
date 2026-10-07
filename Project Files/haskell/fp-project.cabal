@@ -1,0 +1,32 @@
+cabal-version:      2.4
+name:               fp-project
+version:            1.0.0
+synopsis:           A type-safe arithmetic expression interpreter in Haskell
+description:
+  EC8206 Functional Programming project assignment. An interpreter for
+  arithmetic expressions with variables, let bindings and if expressions,
+  plus an algebraic simplifier and higher-order batch evaluation.
+author:             Achintha H.G.R. (EG/2021/4384)
+category:           Education
+build-type:         Simple
+
+common shared
+  default-language: Haskell2010
+  ghc-options:      -Wall
+  build-depends:    base >=4.12 && <5
+  hs-source-dirs:   .
+
+-- The interactive demo: cabal run expr-demo
+executable expr-demo
+  import:           shared
+  main-is:          Main.hs
+  other-modules:    Expr
+                    Samples
+
+-- Expected-vs-actual unit tests: cabal test unit-tests
+test-suite unit-tests
+  import:           shared
+  type:             exitcode-stdio-1.0
+  main-is:          Tests.hs
+  other-modules:    Expr
+                    Samples
