@@ -22,6 +22,7 @@ executable expr-demo
   main-is:          Main.hs
   other-modules:    Expr
                     Samples
+                    TypedExpr
 
 -- Expected-vs-actual unit tests: cabal test unit-tests
 test-suite unit-tests
@@ -30,3 +31,11 @@ test-suite unit-tests
   main-is:          Tests.hs
   other-modules:    Expr
                     Samples
+
+-- QuickCheck properties: cabal test props
+test-suite props
+  import:           shared
+  type:             exitcode-stdio-1.0
+  main-is:          Props.hs
+  other-modules:    Expr
+  build-depends:    QuickCheck >=2.13 && <3

@@ -71,3 +71,8 @@ Environment: x = 5, y = 2, z = 0
 == Part C: static check with undefinedVars (no evaluation needed) ==
   x + w  uses unbound w
   (every other sample only uses bound variables)
+
+== Extension: typed GADT version (TypedExpr.hs) ==
+  evalT gives a Double : Right 2.5
+  evalT gives a Bool   : Right True
+  TIf (TNum 1) ... and TAdd (TBool True) ... are rejected by the compiler.

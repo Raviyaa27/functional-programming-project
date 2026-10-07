@@ -11,6 +11,7 @@ import Data.List (intercalate)
 
 import Expr
 import Samples
+import TypedExpr
 
 main :: IO ()
 main = do
@@ -44,6 +45,14 @@ main = do
       missing -> putStrLn ("  " ++ pretty (sampleExpr s) ++ "  uses unbound "
                            ++ intercalate ", " missing)
   putStrLn "  (every other sample only uses bound variables)"
+
+  heading "Extension: typed GADT version (TypedExpr.hs)"
+  let typedIf = TIf (TAnd (TLess (TVar "x") (TNum 10)) (TNot (TEqual (TVar "y") (TNum 0))))
+                    (TDiv (TVar "x") (TVar "y"))
+                    (TNum 0)
+  putStrLn ("  evalT gives a Double : " ++ show (evalT sampleEnv typedIf))
+  putStrLn ("  evalT gives a Bool   : " ++ show (evalT sampleEnv (TLess (TVar "y") (TVar "x"))))
+  putStrLn "  TIf (TNum 1) ... and TAdd (TBool True) ... are rejected by the compiler."
 
 -- | Print one sample as expression / expected / actual / verdict.
 showSample :: Int -> Sample -> IO ()

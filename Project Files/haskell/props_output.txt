@@ -1,0 +1,28 @@
+
+== simplify preserves every successful result ==
++++ OK, passed 1000 tests:
+57.2% original fails (nothing to compare)
+42.8% original succeeds
+
+== simplify can hide an error (counterexample expected) ==
++++ OK, failed as expected. Falsified (after 10 tests and 3 shrinks):
+Sub (Var "w") (Var "w")
+Just 0.0 /= Nothing
+
+== simplify is idempotent ==
++++ OK, passed 1000 tests.
+
+== simplify never grows an expression ==
++++ OK, passed 1000 tests.
+
+== undefinedVars is sound ==
++++ OK, passed 1000 tests; 1387 discarded.
+
+== undefinedVars is complete ==
++++ OK, passed 1000 tests.
+
+== batchReport adds up ==
++++ OK, passed 1000 tests.
+
+== let shadowing ==
++++ OK, passed 1000 tests.

@@ -1,0 +1,65 @@
+Invalid programs that GHC rejects before anything runs
+======================================================
+Each snippet imports Expr and was compiled with GHC 9.6.7 (ghc -Wall).
+
+---- Bad.hs ----
+bad1 :: Expr
+bad1 = If (Lit 1) (Lit 2) (Lit 3)
+
+GHC output:
+Bad.hs:4:12: error: [GHC-83865]
+    * Couldn't match expected type `BExpr' with actual type `Expr'
+    * In the first argument of `If', namely `(Lit 1)'
+      In the expression: If (Lit 1) (Lit 2) (Lit 3)
+      In an equation for `bad1': bad1 = If (Lit 1) (Lit 2) (Lit 3)
+  |
+4 | bad1 = If (Lit 1) (Lit 2) (Lit 3)
+  |            ^^^^^
+
+---- Bad2.hs ----
+bad2 :: Expr
+bad2 = Add (Less (Lit 1) (Lit 2)) (Lit 3)
+
+GHC output:
+Bad2.hs:4:13: error: [GHC-83865]
+    * Couldn't match expected type `Expr' with actual type `BExpr'
+    * In the first argument of `Add', namely `(Less (Lit 1) (Lit 2))'
+      In the expression: Add (Less (Lit 1) (Lit 2)) (Lit 3)
+      In an equation for `bad2':
+          bad2 = Add (Less (Lit 1) (Lit 2)) (Lit 3)
+  |
+4 | bad2 = Add (Less (Lit 1) (Lit 2)) (Lit 3)
+  |             ^^^^^^^^^^^^^^^^^^^^
+
+---- Bad3.hs ----
+bad3 :: Expr
+bad3 = Mull (Lit 2) (Lit 3)
+
+GHC output:
+Bad3.hs:4:8: error: [GHC-88464]
+    Data constructor not in scope: Mull :: Expr -> Expr -> Expr
+    Suggested fix:
+      Perhaps use one of these:
+        `Mul' (imported from Expr), variable `null' (imported from Prelude)
+  |
+4 | bad3 = Mull (Lit 2) (Lit 3)
+  |        ^^^^
+
+---- Bad4.hs ----
+size :: Expr -> Int
+size (Lit _)   = 1
+size (Var _)   = 1
+size (Add a b) = size a + size b
+size (Sub a b) = size a + size b
+size (Mul a b) = size a + size b
+size (Div a b) = size a + size b
+size (Let _ e b) = size e + size b
+
+GHC output:
+Bad4.hs:4:1: warning: [GHC-62161] [-Wincomplete-patterns]
+    Pattern match(es) are non-exhaustive
+    In an equation for `size':
+        Patterns of type `Expr' not matched: If _ _ _
+  |
+4 | size (Lit _)   = 1
+  | ^^^^^^^^^^^^^^^^^^...
