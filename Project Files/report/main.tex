@@ -1,0 +1,285 @@
+\documentclass[12pt, a4paper]{report}
+\usepackage[T1]{fontenc} % Proper < > | characters in code
+\usepackage{lmodern}
+\usepackage{graphicx} % For including images
+\usepackage{amsmath} % For math mode commands and environments
+\usepackage{amssymb} % For \checkmark
+\usepackage{caption} % For listing and table captions
+\usepackage{titlesec} % For customizing section titles
+\usepackage{hyperref} % For clickable links in the document
+\usepackage{booktabs} % For better tables
+\usepackage{array} % For table column formatting
+\usepackage{tabularx} % For tables that fill the text width
+\usepackage{enumitem} % For customizing lists
+\usepackage{xcolor} % For code colours
+\usepackage{listings} % For source code listings
+\usepackage{float} % For [H] table placement
+%% ____Bibliography____%%
+\usepackage[numbers,sort&compress]{natbib}
+% Page margins
+\usepackage[left=1.5in, right=1in, top=1in, bottom=1in]{geometry}
+
+\hypersetup{hidelinks}
+
+% A short report: numbered sections without chapters
+\renewcommand{\thesection}{\arabic{section}}
+\titleformat{\section}{\large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{10pt plus 2pt minus 2pt}{4pt plus 1pt}
+\titlespacing*{\subsection}{0pt}{6pt plus 2pt minus 2pt}{2pt}
+
+% Captions and references
+\captionsetup{font=small, labelfont=bf, skip=3pt}
+\renewcommand{\bibsection}{\section*{References}}
+\renewcommand{\bibfont}{\footnotesize}
+\setlength{\bibsep}{0pt}
+
+% Source code
+\lstdefinestyle{base}{
+  basicstyle=\ttfamily\footnotesize,
+  numbers=left, numberstyle=\tiny\color{gray}, numbersep=5pt,
+  xleftmargin=14pt, framexleftmargin=14pt,
+  frame=tb, framerule=0.4pt, rulecolor=\color{gray!70},
+  backgroundcolor=\color{gray!6},
+  keywordstyle=\color{blue!55!black}\bfseries,
+  commentstyle=\color{green!35!black}\itshape,
+  stringstyle=\color{red!55!black},
+  columns=fullflexible, keepspaces=true, showstringspaces=false,
+  upquote=true, captionpos=b, aboveskip=6pt, belowskip=2pt
+}
+\lstdefinestyle{hs}{style=base, language=Haskell}
+\lstdefinestyle{py}{style=base, language=Python, numbers=none, xleftmargin=0pt,
+  framexleftmargin=0pt, basicstyle=\ttfamily\fontsize{7.5}{8.1}\selectfont}
+\lstdefinestyle{plain}{style=base, numbers=none, xleftmargin=0pt,
+  framexleftmargin=0pt, basicstyle=\ttfamily\footnotesize}
+\renewcommand{\lstlistingname}{Listing}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\setlength{\emergencystretch}{2em} % Avoid overfull lines next to long code
+\frenchspacing % No extra space after colons and full stops in code
+
+\begin{document}
+
+\include{cover}
+
+\renewcommand{\thepage}{\arabic{page}}
+\setcounter{page}{1}
+
+%=============================================================================
+\section{Introduction and How to Run}
+%=============================================================================
+This report describes a small, type-safe arithmetic expression interpreter
+in Haskell~\cite{hutton2016programming}, covering Parts A--E of the
+assignment. Every module compiles without warnings under GHC~9.6.7 with
+\code{-Wall}. Only \code{cabal test} needs more than GHC (it downloads
+QuickCheck).
+\begin{lstlisting}[style=plain]
+git clone https://github.com/Raviyaa27/functional-programming-project
+cd "functional-programming-project/Project Files/haskell"
+runghc Main.hs     # demo: samples, simplify, batch report
+runghc Tests.hs    # 72 expected-vs-actual unit tests
+cabal test         # the unit tests and 8 QuickCheck properties
+python ../imperative/imperative_eval.py    # Part D (Python 3.10+)
+\end{lstlisting}
+
+%=============================================================================
+\section{Design and Implementation}\label{sec:design}
+%=============================================================================
+\subsection{Language Design (Part A)}
+\begin{lstlisting}[style=hs, numbers=none, xleftmargin=0pt, framexleftmargin=0pt,
+  caption={The types of Part A (abridged from \code{Expr.hs}, lines 47--72).},
+  label=lst:types]
+data Expr  = Lit Double | Var String
+           | Add Expr Expr | Sub Expr Expr | Mul Expr Expr | Div Expr Expr
+           | Let String Expr Expr            -- let x = e1 in e2
+           | If BExpr Expr Expr              -- if b then e1 else e2
+data BExpr = BLit Bool | Less Expr Expr | Equal Expr Expr
+           | And BExpr BExpr | Or BExpr BExpr | Not BExpr
+type Env   = [(String, Double)]
+\end{lstlisting}
+\code{Expr} is a sum type with eight alternatives, each carrying exactly the
+fields it needs: besides the six required constructors, \code{Let} adds a
+local binding and \code{If} a choice. Conditions have their own type,
+\code{BExpr}, so numbers and conditions cannot be mixed. In an \code{Env},
+\code{lookup} finds the first match, so new bindings shadow old ones.
+
+\subsection{Evaluation (Part B)}
+\lstinputlisting[style=hs, firstline=84, lastline=102, firstnumber=84,
+  caption={The evaluator (\code{Expr.hs}, lines 84--102).},
+  label=lst:eval]{../haskell/Expr.hs}
+\code{eval} has one equation per constructor and recurses on the
+sub-expressions. Errors are values of type \code{Either String Double}: the
+arithmetic cases use applicative style and \code{Div}, \code{Let} and
+\code{If} use \code{do}-notation in the \code{Either}
+monad~\cite{wadler1995monads}, so the first \code{Left} stops evaluation and
+becomes the result. An undefined variable (line~86) and division by zero
+(lines 91--96) are reported this way, never as exceptions. The mutually
+recursive \code{evalB} (lines 106--116) evaluates conditions with
+short-circuiting \code{And}/\code{Or}, and \code{If} evaluates only the chosen
+branch.
+
+\subsection{Simplification and Higher-Order Functions (Part C)}
+\code{simplify = rewrite . descend} (lines 133--168) simplifies the children
+first and then applies the first matching rule at the root: nine identities
+($x+0$, $0+x$, $x-0$, $x-x$, $x \cdot 1$, $1 \cdot x$, $x \cdot 0$,
+$0 \cdot x$, $x/1$), constant folding (never of $n/0$, which \code{eval} must
+report), \code{if} with a constant condition, and removal of an unused
+\code{let}; \code{simplifyB} adds double negation and constant comparisons.
+Being bottom-up, one pass reaches a normal form, e.g.\
+\code{x * 1 + 0}~$\to$~\code{x}.
+\lstinputlisting[style=hs, numbers=none, xleftmargin=0pt, framexleftmargin=0pt,
+  linerange={204-205,209-209,221-222,224-227},
+  caption={The list functions (excerpt of \code{Expr.hs}, lines 204--227).},
+  label=lst:hof]{../haskell/Expr.hs}
+\code{eval env} is a partially applied (curried) function
+\code{Expr -> Either String Double} that \code{map} applies to each expression
+(line~205). \code{evalBatch} composes it with \code{rights}, \code{batchReport}
+counts successes and failures in one \code{foldr} (6 and 3 on the samples),
+and \code{undefinedVars} uses \code{filter} with the section
+\code{(\textasciigrave notElem\textasciigrave{} bound)} (line~257) to find unbound variables statically.
+
+%=============================================================================
+\section{Sample Evaluations and Testing}\label{sec:samples}
+%=============================================================================
+Table~\ref{tab:samples} compares hand-computed results for the nine samples
+($x=5$, $y=2$, $z=0$) with the output of \code{Main.hs}. \code{Tests.hs} adds
+72 unit tests and \code{Props.hs} eight QuickCheck
+properties~\cite{claessen2000quickcheck} on 1000 random expressions each; all
+pass.
+
+\begin{table}[tb]
+\centering
+\caption{Sample evaluations: expected vs.\ actual output of \code{Main.hs}.}
+\label{tab:samples}
+\scriptsize
+\renewcommand{\arraystretch}{1.0}
+\begin{tabularx}{\textwidth}{@{}c>{\raggedright\arraybackslash\ttfamily}X
+    >{\raggedright\arraybackslash\ttfamily}p{3.5cm}
+    >{\raggedright\arraybackslash\ttfamily}p{3.5cm}c@{}}
+\toprule
+\textbf{\#} & \textnormal{\textbf{Expression}} & \textnormal{\textbf{Expected}}
+  & \textnormal{\textbf{Actual}} & \textbf{OK} \\
+\midrule
+1 & (x + 3) * y & 16 & 16 & \checkmark \\
+2 & x / y & 2.5 & 2.5 & \checkmark \\
+3 & let a = x * 2 in a + 1 & 11 & 11 & \checkmark \\
+4 & let x = 1 in (let x = 10 in x) + x & 11 & 11 & \checkmark \\
+5 & if x < 10 \&\& not (y == 0) then x / y else 0 & 2.5 & 2.5 & \checkmark \\
+6 & if z == 0 then 0 else x / z & 0 & 0 & \checkmark \\
+7 & x / (y - 2) & error: division by zero: x / (y - 2)
+  & error: division by zero: x / (y - 2) & \checkmark \\
+8 & x + w & error: undefined variable: w & error: undefined variable: w
+  & \checkmark \\
+9 & let a = 1 / z in a + 1 & error: division by zero: 1 / z
+  & error: division by zero: 1 / z & \checkmark \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+%=============================================================================
+\section{Comparative Analysis (Part D)}\label{sec:compare}
+%=============================================================================
+Listing~\ref{lst:python} is the imperative version: a \code{match} on string
+tags, a mutable \code{result}, a shared dictionary and exceptions.
+
+\begin{table}[tb]
+\centering
+\caption{The Haskell and Python versions compared.}
+\label{tab:compare}
+\footnotesize
+\renewcommand{\arraystretch}{1.0}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.5cm}
+    >{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+ & \textbf{Haskell (\code{Expr.hs})} & \textbf{Python (\code{imperative\_eval.py})} \\
+\midrule
+Error representation & \code{Left msg}, a value; the type shows that failure
+  is possible & \code{EvalError} exception; not visible in the signature \\
+Error propagation & \code{<*>} and \code{do} stop at the first \code{Left};
+  callers must unwrap the result & Stack unwinding to whichever \code{try}
+  encloses the call \\
+Mutable state & None: \code{let} builds a new list \mbox{\code{(x, v) : env}} &
+  \code{result} reassigned; \code{env} overwritten, restored in
+  \code{finally} \\
+Misspelt or missing case & Compile error (\code{Mull} not in scope);
+  \code{-Wincomplete-patterns} warning & Found only if that
+  branch runs (\code{case \_}) \\
+Mixing numbers and conditions & Type error: \code{If} needs a \code{BExpr},
+  \code{Add} needs \code{Expr}s & Accepted: any value is ``truthy'', and
+  \code{True + 3} gives \code{4} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Errors.} In Haskell, failure is part of the type of \code{eval}, so
+a caller must handle the \code{Left} before using the \code{Double}, and
+\code{<*>} and \code{do} propagate it at no cost. In Python, failure is
+invisible in the signature and a forgotten \code{except} crashes the
+program.
+\textbf{State.} Python reassigns \code{result} in every case and overwrites the
+shared \code{env} in \code{let}; without the \code{finally}, an error in a
+\code{let} body would leave the binding behind. Haskell has no mutable state.
+\textbf{Bugs ruled out.} \code{imperative\_eval.py} runs five programs that
+GHC rejects before they run (the last rows of Table~\ref{tab:compare}, plus a
+string literal that crashes with \code{TypeError}). Division by zero and
+unbound variables depend on run-time values, so neither version excludes them
+by types; Haskell returns them as values instead of throwing them.
+
+\lstinputlisting[style=py, linerange={16-47,61-63},
+  caption={Imperative evaluator (\code{imperative\_eval.py}, lines 16--63;
+  the condition cases are omitted).},
+  label=lst:python]{../imperative/imperative_eval.py}
+
+%=============================================================================
+\section{Reflection (Part E)}\label{sec:reflect}
+%=============================================================================
+\textbf{Pure functions.} A pure function's result depends only on its
+arguments, and it has no side effects. The type of \code{eval} (line~84) has
+no \code{IO}, so it cannot print, read input or change any variable; the same
+environment and expression always give the same result, and likewise for
+\code{simplify}. This made testing simple: a unit test just compares values,
+and QuickCheck can compare \code{eval env e} with
+\code{eval env (simplify e)} thousands of times. Functions are also values:
+\code{eval env} is passed to \code{map} (line~205)~\cite{hughes1989why}.
+
+\textbf{Immutability.} Nothing is updated in place. Line~99,
+\code{eval ((x, v) : env) body}, does not modify \code{env}: it builds a new
+list whose tail \emph{is} the old one (shared, not copied). When the
+\code{let} ends, the caller still holds its original \code{env}, so the
+binding disappears with no clean-up (sample~4) and Python's
+\code{try}/\code{finally} has no counterpart. \code{simplify} likewise builds a
+new tree (lines 140--145) and leaves its input intact, so \code{Main.hs}
+prints each expression before and after simplification from the same value.
+
+\textbf{Why invalid expressions cannot be constructed.} Each constructor fixes
+the number and types of its fields: \code{Add} takes exactly two \code{Expr}s,
+and \code{If} takes a \code{BExpr} and two \code{Expr}s. An operator with a
+missing operand, or a misspelt one such as \code{Mull}, is therefore not an
+\code{Expr} at all, and keeping conditions in a separate type turns Python's
+silent bugs into compile errors (\code{compile\_errors.txt}):
+\begin{lstlisting}[style=plain]
+bad1 = If (Lit 1) (Lit 2) (Lit 3)
+  * Couldn't match expected type `BExpr' with actual type `Expr'
+\end{lstlisting}
+\code{Add (Less (Lit 1) (Lit 2)) (Lit 3)} fails likewise with the types
+swapped, and a function that forgets a constructor gets a warning naming it
+(\code{Patterns of type \textasciigrave Expr\textquotesingle{} not matched: If \_ \_ \_}). Errors that depend
+on values (an unbound name, a zero divisor) are beyond the types; \code{eval}
+returns them as \code{Left}, and \code{undefinedVars} finds unbound names
+before evaluation (QuickCheck confirms it is sound and complete).
+\code{TypedExpr.hs} goes further with a GADT indexed by the result type, so a
+single expression type still rejects ill-typed terms at compile time.
+
+\textbf{What testing revealed.} QuickCheck refuted the claim that
+\code{simplify} never changes whether evaluation succeeds by finding
+\code{w - w}: it fails with \code{undefined variable: w} but simplifies to
+\code{0}, because rules that discard a sub-expression ($x \cdot 0$, $x - x$,
+an unused \code{let}) discard its error too. What holds, on 1000 random
+expressions, is that every \emph{successful} result is preserved; because
+failure is a value, this was visible and testable.
+
+% References
+\bibliographystyle{ieeetr}
+\bibliography{bibliography}
+
+\end{document}
