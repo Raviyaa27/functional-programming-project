@@ -71,8 +71,9 @@
 \section{Introduction and How to Run}
 %=============================================================================
 This report describes a small, type-safe arithmetic expression interpreter
-in Haskell~\cite{hutton2016programming}, covering Parts A--E of the
-assignment. Every module compiles without warnings under GHC~9.6.7 with
+in Haskell~\cite{hutton2016programming}, compares it with an imperative
+version and reflects on the functional programming principles behind it.
+Every module compiles without warnings under GHC~9.6.7 with
 \code{-Wall}. Only \code{cabal test} needs more than GHC (it downloads
 QuickCheck).
 \begin{lstlisting}[style=plain]
@@ -81,20 +82,20 @@ cd "functional-programming-project/Project Files/haskell"
 runghc Main.hs     # demo: samples, simplify, batch report
 runghc Tests.hs    # 72 expected-vs-actual unit tests
 cabal test         # the unit tests and 8 QuickCheck properties
-python ../imperative/imperative_eval.py    # Part D (Python 3.10+)
+python ../imperative/imperative_eval.py    # Python 3.10+
 \end{lstlisting}
 
 %=============================================================================
 \section{Design and Implementation}\label{sec:design}
 %=============================================================================
-\subsection{Language Design (Part A)}
+\subsection{Language Design}
 \begin{lstlisting}[style=hs, numbers=none, xleftmargin=0pt, framexleftmargin=0pt,
-  caption={The types of Part A (abridged from \code{Expr.hs}, lines 47--72).},
+  caption={The expression types (abridged from \code{Expr.hs}, lines 27-47).},
   label=lst:types]
 data Expr  = Lit Double | Var String
            | Add Expr Expr | Sub Expr Expr | Mul Expr Expr | Div Expr Expr
-           | Let String Expr Expr            -- let x = e1 in e2
-           | If BExpr Expr Expr              -- if b then e1 else e2
+           | Let String Expr Expr
+           | If BExpr Expr Expr
 data BExpr = BLit Bool | Less Expr Expr | Equal Expr Expr
            | And BExpr BExpr | Or BExpr BExpr | Not BExpr
 type Env   = [(String, Double)]
@@ -105,23 +106,23 @@ local binding and \code{If} a choice. Conditions have their own type,
 \code{BExpr}, so numbers and conditions cannot be mixed. In an \code{Env},
 \code{lookup} finds the first match, so new bindings shadow old ones.
 
-\subsection{Evaluation (Part B)}
-\lstinputlisting[style=hs, firstline=84, lastline=102, firstnumber=84,
-  caption={The evaluator (\code{Expr.hs}, lines 84--102).},
+\subsection{Evaluation}
+\lstinputlisting[style=hs, firstline=51, lastline=69, firstnumber=51,
+  caption={The evaluator (\code{Expr.hs}, lines 51-69).},
   label=lst:eval]{../haskell/Expr.hs}
 \code{eval} has one equation per constructor and recurses on the
 sub-expressions. Errors are values of type \code{Either String Double}: the
 arithmetic cases use applicative style and \code{Div}, \code{Let} and
 \code{If} use \code{do}-notation in the \code{Either}
 monad~\cite{wadler1995monads}, so the first \code{Left} stops evaluation and
-becomes the result. An undefined variable (line~86) and division by zero
-(lines 91--96) are reported this way, never as exceptions. The mutually
-recursive \code{evalB} (lines 106--116) evaluates conditions with
+becomes the result. An undefined variable (line~53) and division by zero
+(lines 58-63) are reported this way, never as exceptions. The mutually
+recursive \code{evalB} (lines 71-81) evaluates conditions with
 short-circuiting \code{And}/\code{Or}, and \code{If} evaluates only the chosen
 branch.
 
-\subsection{Simplification and Higher-Order Functions (Part C)}
-\code{simplify = rewrite . descend} (lines 133--168) simplifies the children
+\subsection{Simplification and Higher-Order Functions}
+\code{simplify = rewrite . descend} (lines 86-119) simplifies the children
 first and then applies the first matching rule at the root: nine identities
 ($x+0$, $0+x$, $x-0$, $x-x$, $x \cdot 1$, $1 \cdot x$, $x \cdot 0$,
 $0 \cdot x$, $x/1$), constant folding (never of $n/0$, which \code{eval} must
@@ -130,15 +131,15 @@ report), \code{if} with a constant condition, and removal of an unused
 Being bottom-up, one pass reaches a normal form, e.g.\
 \code{x * 1 + 0}~$\to$~\code{x}.
 \lstinputlisting[style=hs, numbers=none, xleftmargin=0pt, framexleftmargin=0pt,
-  linerange={204-205,209-209,221-222,224-227},
-  caption={The list functions (excerpt of \code{Expr.hs}, lines 204--227).},
+  linerange={144-145,148-148,158-159,161-164},
+  caption={The list functions (excerpt of \code{Expr.hs}, lines 144-164).},
   label=lst:hof]{../haskell/Expr.hs}
 \code{eval env} is a partially applied (curried) function
 \code{Expr -> Either String Double} that \code{map} applies to each expression
-(line~205). \code{evalBatch} composes it with \code{rights}, \code{batchReport}
+(line~145). \code{evalBatch} composes it with \code{rights}, \code{batchReport}
 counts successes and failures in one \code{foldr} (6 and 3 on the samples),
 and \code{undefinedVars} uses \code{filter} with the section
-\code{(\textasciigrave notElem\textasciigrave{} bound)} (line~257) to find unbound variables statically.
+\code{(\textasciigrave notElem\textasciigrave{} bound)} (line~188) to find unbound variables statically.
 
 %=============================================================================
 \section{Sample Evaluations and Testing}\label{sec:samples}
@@ -179,7 +180,7 @@ pass.
 \end{table}
 
 %=============================================================================
-\section{Comparative Analysis (Part D)}\label{sec:compare}
+\section{Comparative Analysis}\label{sec:compare}
 %=============================================================================
 Listing~\ref{lst:python} is the imperative version: a \code{match} on string
 tags, a mutable \code{result}, a shared dictionary and exceptions.
@@ -227,30 +228,30 @@ string literal that crashes with \code{TypeError}). Division by zero and
 unbound variables depend on run-time values, so neither version excludes them
 by types; Haskell returns them as values instead of throwing them.
 
-\lstinputlisting[style=py, linerange={16-47,61-63},
-  caption={Imperative evaluator (\code{imperative\_eval.py}, lines 16--63;
+\lstinputlisting[style=py, linerange={10-41,55-57},
+  caption={Imperative evaluator (\code{imperative\_eval.py}, lines 10-57;
   the condition cases are omitted).},
   label=lst:python]{../imperative/imperative_eval.py}
 
 %=============================================================================
-\section{Reflection (Part E)}\label{sec:reflect}
+\section{Reflection}\label{sec:reflect}
 %=============================================================================
 \textbf{Pure functions.} A pure function's result depends only on its
-arguments, and it has no side effects. The type of \code{eval} (line~84) has
+arguments, and it has no side effects. The type of \code{eval} (line~51) has
 no \code{IO}, so it cannot print, read input or change any variable; the same
 environment and expression always give the same result, and likewise for
 \code{simplify}. This made testing simple: a unit test just compares values,
 and QuickCheck can compare \code{eval env e} with
 \code{eval env (simplify e)} thousands of times. Functions are also values:
-\code{eval env} is passed to \code{map} (line~205)~\cite{hughes1989why}.
+\code{eval env} is passed to \code{map} (line~145)~\cite{hughes1989why}.
 
-\textbf{Immutability.} Nothing is updated in place. Line~99,
+\textbf{Immutability.} Nothing is updated in place. Line~66,
 \code{eval ((x, v) : env) body}, does not modify \code{env}: it builds a new
 list whose tail \emph{is} the old one (shared, not copied). When the
 \code{let} ends, the caller still holds its original \code{env}, so the
 binding disappears with no clean-up (sample~4) and Python's
 \code{try}/\code{finally} has no counterpart. \code{simplify} likewise builds a
-new tree (lines 140--145) and leaves its input intact, so \code{Main.hs}
+new tree (lines 92-97) and leaves its input intact, so \code{Main.hs}
 prints each expression before and after simplification from the same value.
 
 \textbf{Why invalid expressions cannot be constructed.} Each constructor fixes
@@ -281,7 +282,24 @@ expressions, is that every \emph{successful} result is preserved; because
 failure is a value, this was visible and testable.
 
 % References
-\bibliographystyle{ieeetr}
-\bibliography{bibliography}
+\begin{thebibliography}{4}
+\bibitem{hutton2016programming}
+G.~Hutton, \emph{Programming in Haskell}. Cambridge, UK: Cambridge University
+Press, 2nd~ed., 2016.
+
+\bibitem{wadler1995monads}
+P.~Wadler, ``Monads for functional programming,'' in \emph{Advanced Functional
+Programming}, vol.~925 of \emph{Lecture Notes in Computer Science},
+pp.~24-52, Springer, 1995.
+
+\bibitem{claessen2000quickcheck}
+K.~Claessen and J.~Hughes, ``QuickCheck: A lightweight tool for random testing
+of Haskell programs,'' in \emph{Proceedings of the Fifth ACM SIGPLAN
+International Conference on Functional Programming (ICFP)}, pp.~268-279, 2000.
+
+\bibitem{hughes1989why}
+J.~Hughes, ``Why functional programming matters,'' \emph{The Computer
+Journal}, vol.~32, no.~2, pp.~98-107, 1989.
+\end{thebibliography}
 
 \end{document}
