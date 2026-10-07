@@ -1,21 +1,15 @@
-"""Imperative version of eval, written for comparison (EC8206, Part D).
-
-Expressions are nested tuples tagged with a string, for example
-    ("mul", ("add", ("var", "x"), ("lit", 3)), ("var", "y"))     # (x + 3) * y
-The environment is a mutable dict and errors are raised as exceptions.
-
-Run with:  python imperative_eval.py
-Author:    Achintha H.G.R. (EG/2021/4384)
-"""
+# Imperative version of eval for comparison. Run: python imperative_eval.py
+# Achintha H.G.R. (EG/2021/4384)
+# Expressions are tuples tagged with a string, e.g. ("add", ("var", "x"), ("lit", 3))
 
 
 class EvalError(Exception):
-    """Raised for division by zero and for undefined variables."""
+    pass
 
 
 def evaluate(env, expr):
-    result = None                           # mutable, assigned by each case
-    match expr[0]:                          # "switch" on a string tag
+    result = None
+    match expr[0]:
         case "lit":
             result = expr[1]
         case "var":
@@ -34,19 +28,19 @@ def evaluate(env, expr):
             if right == 0:
                 raise EvalError("division by zero")
             result = left / right
-        case "let":                         # ("let", name, bound, body)
+        case "let":
             name = expr[1]
             had_old, old = name in env, env.get(name)
-            env[name] = evaluate(env, expr[2])  # overwrite the shared dict,
+            env[name] = evaluate(env, expr[2])
             try:
                 result = evaluate(env, expr[3])
-            finally:                        # so restore it by hand, even
-                if had_old:                 # when an error is raised
+            finally:
+                if had_old:
                     env[name] = old
                 else:
                     del env[name]
-        case "if":                          # ("if", condition, then, else)
-            if evaluate(env, expr[1]):      # any value is accepted as a condition
+        case "if":
+            if evaluate(env, expr[1]):
                 result = evaluate(env, expr[2])
             else:
                 result = evaluate(env, expr[3])
@@ -64,14 +58,12 @@ def evaluate(env, expr):
 
 
 def run(env, expr):
-    """Evaluate, turning an EvalError into a printable message."""
     try:
         return evaluate(env, expr)
     except EvalError as err:
         return "error: " + str(err)
 
 
-# The same nine samples as Samples.hs, with the same environment.
 x, y, z, w = ("var", "x"), ("var", "y"), ("var", "z"), ("var", "w")
 a = ("var", "a")
 
@@ -98,7 +90,7 @@ SAMPLES = [
      "error: division by zero"),
 ]
 
-# Programs that a type checker would reject, but Python happily runs.
+# programs a type checker would reject
 RUNTIME_ONLY_BUGS = [
     ("mistyped tag in a branch that does not run",
      ("if", ("lt", x, lit(10)), lit(1), ("mull", x, y))),
@@ -127,7 +119,7 @@ def main():
     for name, expr in RUNTIME_ONLY_BUGS:
         try:
             outcome = repr(run(env, expr))
-        except Exception as err:            # TypeError etc. escape run()
+        except Exception as err:
             outcome = f"crash: {type(err).__name__}: {err}"
         print(f"  {name:<45} -> {outcome}")
 

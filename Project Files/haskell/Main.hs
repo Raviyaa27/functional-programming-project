@@ -1,9 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
--- |
--- Module      : Main (demo)
--- Description : Demonstrates every part of the interpreter.
---
--- Run with:   runghc Main.hs
+-- Demo: runghc Main.hs
 module Main (main) where
 
 import Control.Monad (forM_, zipWithM_)
@@ -24,9 +20,7 @@ main = do
   heading "Part C: simplify (before  ->  after)"
   forM_ simplifyExamples $ \e ->
     putStrLn ("  " ++ pad 34 (pretty e) ++ "->  " ++ pretty (simplify e))
-  putStrLn "  note: 1 / 0 is left for eval to report; w * 0 -> 0 also drops the"
-  putStrLn "        'undefined variable' error, so simplify preserves successful"
-  putStrLn "        results only (see Props.hs and the report, Part E)."
+  putStrLn "  note: w * 0 -> 0 also removes the undefined variable error"
 
   heading "Part C: batch evaluation with map (eval env)"
   let batch = map sampleExpr samples
@@ -54,7 +48,6 @@ main = do
   putStrLn ("  evalT gives a Bool   : " ++ show (evalT sampleEnv (TLess (TVar "y") (TVar "x"))))
   putStrLn "  TIf (TNum 1) ... and TAdd (TBool True) ... are rejected by the compiler."
 
--- | Print one sample as expression / expected / actual / verdict.
 showSample :: Int -> Sample -> IO ()
 showSample i s = do
   let got     = eval sampleEnv (sampleExpr s)
@@ -78,10 +71,6 @@ simplifyExamples =
   where
     x = Var "x"
     y = Var "y"
-
-------------------------------------------------------------------------------
--- Formatting helpers
-------------------------------------------------------------------------------
 
 heading :: String -> IO ()
 heading title = putStrLn ("\n== " ++ title ++ " ==")

@@ -48,9 +48,7 @@ Environment: x = 5, y = 2, z = 0
   let unused = 9 in x + y           ->  x + y
   1 / 0                             ->  1 / 0
   w * 0                             ->  0
-  note: 1 / 0 is left for eval to report; w * 0 -> 0 also drops the
-        'undefined variable' error, so simplify preserves successful
-        results only (see Props.hs and the report, Part E).
+  note: w * 0 -> 0 also removes the undefined variable error
 
 == Part C: batch evaluation with map (eval env) ==
   [1] 16

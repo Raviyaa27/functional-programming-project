@@ -16,7 +16,6 @@ common shared
   build-depends:    base >=4.12 && <5
   hs-source-dirs:   .
 
--- The interactive demo: cabal run expr-demo
 executable expr-demo
   import:           shared
   main-is:          Main.hs
@@ -24,7 +23,6 @@ executable expr-demo
                     Samples
                     TypedExpr
 
--- Expected-vs-actual unit tests: cabal test unit-tests
 test-suite unit-tests
   import:           shared
   type:             exitcode-stdio-1.0
@@ -32,7 +30,6 @@ test-suite unit-tests
   other-modules:    Expr
                     Samples
 
--- QuickCheck properties: cabal test props
 test-suite props
   import:           shared
   type:             exitcode-stdio-1.0

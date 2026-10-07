@@ -1,14 +1,5 @@
 {-# OPTIONS_GHC -Wall -Wno-orphans #-}
--- |
--- Module      : Main (property tests)
--- Description : QuickCheck properties for eval, simplify and the batch functions.
---
--- Run with:   cabal test props
---
--- Unit tests check chosen examples; these properties are checked on
--- thousands of randomly generated expressions. This is only possible
--- because 'eval' and 'simplify' are pure: the same input always gives the
--- same output, so a property can be tested by just calling the functions.
+-- QuickCheck properties: cabal test props
 module Main (main) where
 
 import Control.Monad (unless)
@@ -19,13 +10,7 @@ import qualified Test.QuickCheck.Random as Random
 
 import Expr
 
-------------------------------------------------------------------------------
--- Random expressions
-------------------------------------------------------------------------------
-
--- | Generated expressions use these names. The test environment binds x, y
--- and z (with z = 0), but never w, so both kinds of error occur. x and y are
--- picked more often so that plenty of expressions also succeed.
+-- w is never bound in testEnv
 varPool :: [String]
 varPool = ["x", "y", "z", "w"]
 
@@ -35,12 +20,10 @@ genVar = Var <$> frequency [(3, pure "x"), (3, pure "y"), (1, pure "z"), (1, pur
 testEnv :: Env
 testEnv = [("x", 5), ("y", 2), ("z", 0)]
 
--- | Small whole numbers keep every intermediate result finite, so floating
--- point overflow (Infinity, NaN) cannot blur the comparisons below.
+-- small whole numbers keep results finite (no Infinity or NaN)
 genLit :: Gen Expr
 genLit = Lit . fromIntegral <$> choose (-3, 3 :: Int)
 
--- | An expression tree whose depth is bounded by the size parameter.
 genExpr :: Int -> Gen Expr
 genExpr 0 = oneof [genLit, genVar]
 genExpr n = frequency
@@ -73,8 +56,6 @@ instance Arbitrary Expr where
   arbitrary = sized genExpr
   shrink    = shrinkExpr
 
--- | Smaller versions of an expression, so that QuickCheck can report the
--- simplest counterexample it finds.
 shrinkExpr :: Expr -> [Expr]
 shrinkExpr (Lit n)        = [Lit 0 | n /= 0]
 shrinkExpr (Var _)        = []
@@ -104,7 +85,6 @@ shrinkBExpr (And p q)   = [p, q] ++ [And p' q | p' <- shrinkBExpr p] ++ [And p q
 shrinkBExpr (Or p q)    = [p, q] ++ [Or p' q | p' <- shrinkBExpr p] ++ [Or p q' | q' <- shrinkBExpr q]
 shrinkBExpr (Not p)     = p : [Not p' | p' <- shrinkBExpr p]
 
--- | Number of nodes in an expression tree.
 size :: Expr -> Int
 size (Lit _)        = 1
 size (Var _)        = 1
@@ -123,23 +103,13 @@ sizeB (And p q)   = 1 + sizeB p + sizeB q
 sizeB (Or p q)    = 1 + sizeB p + sizeB q
 sizeB (Not p)     = 1 + sizeB p
 
-------------------------------------------------------------------------------
--- Properties
-------------------------------------------------------------------------------
-
--- | simplify never changes the value of an expression that evaluates
--- successfully.
 prop_preservesSuccess :: Expr -> Property
 prop_preservesSuccess e =
   case eval testEnv e of
     Left _  -> label "original fails (nothing to compare)" True
     Right v -> label "original succeeds" (eval testEnv (simplify e) === Right v)
 
--- | The stronger claim "simplify never changes whether evaluation succeeds"
--- is FALSE: x * 0 = 0, x - x = 0 and removing an unused let all throw away
--- a sub-expression together with any error inside it. 'expectFailure' makes
--- QuickCheck search for a counterexample and pass only if it finds one.
--- (Error messages are ignored here, since they quote the expression.)
+-- expected to fail: simplify can hide an error (e.g. w - w becomes 0)
 prop_naiveEquivalence :: Property
 prop_naiveEquivalence = expectFailure $ \e ->
   succeeds (eval testEnv (simplify e)) === succeeds (eval testEnv e)
@@ -147,16 +117,12 @@ prop_naiveEquivalence = expectFailure $ \e ->
     succeeds :: Either String Double -> Maybe Double
     succeeds = either (const Nothing) Just
 
--- | Bottom-up rewriting reaches a normal form in a single pass.
 prop_idempotent :: Expr -> Property
 prop_idempotent e = simplify (simplify e) === simplify e
 
--- | simplify never makes an expression bigger.
 prop_neverGrows :: Expr -> Bool
 prop_neverGrows e = size (simplify e) <= size e
 
--- | If the static check finds no unbound variables, eval never fails with
--- "undefined variable".
 prop_staticCheckSound :: Expr -> Property
 prop_staticCheckSound e =
   null (undefinedVars testEnv e) ==>
@@ -164,8 +130,6 @@ prop_staticCheckSound e =
       Left err -> counterexample err (not ("undefined variable" `isPrefixOf` err))
       Right _  -> property True
 
--- | Whenever eval reports an undefined variable, the static check had
--- already found that variable.
 prop_staticCheckComplete :: Expr -> Property
 prop_staticCheckComplete e =
   case eval testEnv e of
@@ -173,7 +137,6 @@ prop_staticCheckComplete e =
             -> property (v `elem` undefinedVars testEnv e)
     _       -> property True
 
--- | batchReport accounts for every expression in the batch exactly once.
 prop_batchAddsUp :: [Expr] -> Property
 prop_batchAddsUp es =
   let r = batchReport testEnv es
@@ -183,14 +146,9 @@ prop_batchAddsUp es =
        , length (failures r)    === failed r
        ]
 
--- | The innermost let binding wins.
 prop_letShadows :: Double -> Double -> Property
 prop_letShadows a b =
   eval testEnv (Let "x" (Lit a) (Let "x" (Lit b) (Var "x"))) === Right b
-
-------------------------------------------------------------------------------
--- Runner
-------------------------------------------------------------------------------
 
 main :: IO ()
 main = do
@@ -206,8 +164,7 @@ main = do
     ]
   unless (all isSuccess results) exitFailure
   where
-    -- A fixed seed makes every run (and the output quoted in the report)
-    -- reproducible.
+    -- fixed seed so the results are reproducible
     run :: Testable p => String -> p -> IO Result
     run name p = do
       putStrLn ("\n== " ++ name ++ " ==")

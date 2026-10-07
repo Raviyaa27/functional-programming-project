@@ -1,10 +1,5 @@
 {-# OPTIONS_GHC -Wall #-}
--- |
--- Module      : Main (unit tests)
--- Description : Expected-vs-actual unit tests. Needs only GHC's base library.
---
--- Run with:   runghc Tests.hs
--- The program exits with a non-zero status if any test fails.
+-- Unit tests: runghc Tests.hs
 module Main (main) where
 
 import Control.Monad (forM_, unless)
@@ -13,7 +8,6 @@ import System.Exit (exitFailure)
 import Expr
 import Samples
 
--- | The outcome of one test case.
 data Outcome = Outcome
   { testName :: String
   , passed   :: Bool
@@ -21,16 +15,13 @@ data Outcome = Outcome
   , actual   :: String
   }
 
--- | Compare an expected value with the value actually produced.
 check :: (Eq a, Show a) => String -> a -> a -> Outcome
 check name want got = Outcome name (want == got) (show want) (show got)
 
 env :: Env
-env = sampleEnv   -- x = 5, y = 2, z = 0
+env = sampleEnv
 
-------------------------------------------------------------------------------
 -- Part B
-------------------------------------------------------------------------------
 
 sampleTests :: [Outcome]
 sampleTests =
@@ -87,9 +78,7 @@ evalBTests =
       (evalB env (And (BLit True) (Less (Var "w") (Lit 1))))
   ]
 
-------------------------------------------------------------------------------
 -- Part C
-------------------------------------------------------------------------------
 
 x, y, a :: Expr
 x = Var "x"
@@ -171,10 +160,6 @@ prettyTests =
       (pretty (If (And (Less (Var "x") (Lit 10)) (Not (Equal (Var "y") (Lit 0))))
                   (Div (Var "x") (Var "y")) (Lit 0)))
   ]
-
-------------------------------------------------------------------------------
--- Runner
-------------------------------------------------------------------------------
 
 groups :: [(String, [Outcome])]
 groups =

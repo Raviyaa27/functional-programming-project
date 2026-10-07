@@ -1,26 +1,12 @@
 {-# OPTIONS_GHC -Wall #-}
--- |
--- Module      : Expr
--- Description : A small, type-safe arithmetic expression interpreter.
--- Author      : Achintha H.G.R. (EG/2021/4384)
---
--- EC8206 Functional Programming - Project Assignment.
---
---   * Part A  (language design) : 'Expr', 'BExpr', 'Env'
---   * Part B  (evaluation)      : 'eval', 'evalB'
---   * Part C  (higher-order)    : 'simplify', 'simplifyB', 'evalAll',
---                                 'evalBatch', 'batchReport', 'freeVars',
---                                 'undefinedVars'
---   * Pretty printing           : 'pretty', 'prettyB'
+-- EC8206 Functional Programming project
+-- Achintha H.G.R. (EG/2021/4384)
 module Expr
-  ( -- * Part A: language design
-    Expr (..)
+  ( Expr (..)
   , BExpr (..)
   , Env
-    -- * Part B: evaluation
   , eval
   , evalB
-    -- * Part C: simplification and higher-order functions
   , simplify
   , simplifyB
   , evalAll
@@ -29,7 +15,6 @@ module Expr
   , batchReport
   , freeVars
   , undefinedVars
-    -- * Pretty printing
   , pretty
   , prettyB
   ) where
@@ -37,50 +22,32 @@ module Expr
 import Data.Either (rights)
 import Data.List (nub)
 
-------------------------------------------------------------------------------
--- Part A: language design
-------------------------------------------------------------------------------
+-- Part A
 
--- | Arithmetic expressions. Every constructor is a different "shape" of
--- expression, so 'Expr' is a sum type: a value is exactly one of these
--- alternatives, and each alternative carries exactly the data it needs.
 data Expr
-  = Lit Double             -- ^ numeric literal, e.g. @3.5@
-  | Var String             -- ^ variable reference, looked up in the 'Env'
-  | Add Expr Expr          -- ^ @e1 + e2@
-  | Sub Expr Expr          -- ^ @e1 - e2@
-  | Mul Expr Expr          -- ^ @e1 * e2@
-  | Div Expr Expr          -- ^ @e1 / e2@ (fails if the divisor is zero)
-  | Let String Expr Expr   -- ^ @let x = e1 in e2@ (local, lexically scoped)
-  | If BExpr Expr Expr     -- ^ @if b then e1 else e2@
+  = Lit Double
+  | Var String
+  | Add Expr Expr
+  | Sub Expr Expr
+  | Mul Expr Expr
+  | Div Expr Expr
+  | Let String Expr Expr
+  | If BExpr Expr Expr
   deriving (Eq, Show)
 
--- | Boolean conditions, used only as the first field of 'If'. Keeping them
--- in a separate type means a number can never be used where a condition is
--- expected, and a condition can never be used as a number.
 data BExpr
-  = BLit Bool              -- ^ @true@ / @false@
-  | Less Expr Expr         -- ^ @e1 < e2@
-  | Equal Expr Expr        -- ^ @e1 == e2@
-  | And BExpr BExpr        -- ^ @b1 && b2@ (short-circuits)
-  | Or BExpr BExpr         -- ^ @b1 || b2@ (short-circuits)
-  | Not BExpr              -- ^ @not b@
+  = BLit Bool
+  | Less Expr Expr
+  | Equal Expr Expr
+  | And BExpr BExpr
+  | Or BExpr BExpr
+  | Not BExpr
   deriving (Eq, Show)
 
--- | Variable bindings. When a name occurs more than once, the first
--- (innermost) binding wins, which is exactly what 'lookup' does.
 type Env = [(String, Double)]
 
-------------------------------------------------------------------------------
--- Part B: evaluation
-------------------------------------------------------------------------------
+-- Part B
 
--- | Evaluate an expression in an environment.
---
--- Failure is an ordinary return value ('Left' with a message), never a
--- runtime exception. The 'Either' monad / applicative threads it through:
--- as soon as one sub-expression fails, the whole evaluation stops and that
--- 'Left' becomes the result.
 eval :: Env -> Expr -> Either String Double
 eval _   (Lit n)        = Right n
 eval env (Var x)        = maybe (Left ("undefined variable: " ++ x)) Right
@@ -96,44 +63,29 @@ eval env (Div a b)      = do
     else Right (x / y)
 eval env (Let x e body) = do
   v <- eval env e
-  eval ((x, v) : env) body    -- a NEW list: the caller's env is untouched
+  eval ((x, v) : env) body
 eval env (If c t e)     = do
   b <- evalB env c
-  if b then eval env t else eval env e   -- only the chosen branch runs
+  if b then eval env t else eval env e
 
--- | Evaluate a condition. Mutually recursive with 'eval', because
--- comparisons contain arithmetic expressions.
 evalB :: Env -> BExpr -> Either String Bool
 evalB _   (BLit b)    = Right b
 evalB env (Less a b)  = (<)  <$> eval env a <*> eval env b
 evalB env (Equal a b) = (==) <$> eval env a <*> eval env b
 evalB env (And p q)   = do
   l <- evalB env p
-  if l then evalB env q else Right False    -- short-circuit, like (&&)
+  if l then evalB env q else Right False
 evalB env (Or p q)    = do
   l <- evalB env p
-  if l then Right True else evalB env q     -- short-circuit, like (||)
+  if l then Right True else evalB env q
 evalB env (Not p)     = not <$> evalB env p
 
-------------------------------------------------------------------------------
--- Part C: simplification
-------------------------------------------------------------------------------
+-- Part C
 
--- | Rewrite an expression using algebraic identities.
---
--- The children are simplified first (bottom-up), then one rule is tried at
--- the root. Every rule returns either an already-simplified sub-expression
--- or a literal, so a single pass is enough: @simplify (simplify e)@ equals
--- @simplify e@ (checked by @prop_idempotent@ in "Props").
---
--- Rules that throw a sub-expression away (@x * 0@, @x - x@ and an unused
--- @let@) also throw away any error hidden inside it. So 'simplify' keeps
--- every /successful/ result the same, but can turn a failing expression
--- into one that succeeds (see @prop_naiveEquivalence@ in "Props").
+-- x * 0, x - x and an unused let drop a sub-expression, and any error in it.
 simplify :: Expr -> Expr
 simplify = rewrite . descend
   where
-    -- Step 1: simplify every child, keeping the node itself.
     descend :: Expr -> Expr
     descend e@(Lit _)      = e
     descend e@(Var _)      = e
@@ -144,31 +96,28 @@ simplify = rewrite . descend
     descend (Let x e body) = Let x (simplify e) (simplify body)
     descend (If c t e)     = If (simplifyB c) (simplify t) (simplify e)
 
-    -- Step 2: apply the first identity that matches at the root.
     rewrite :: Expr -> Expr
-    rewrite (Add (Lit a) (Lit b)) = Lit (a + b)          -- constant folding
+    rewrite (Add (Lit a) (Lit b)) = Lit (a + b)
     rewrite (Sub (Lit a) (Lit b)) = Lit (a - b)
     rewrite (Mul (Lit a) (Lit b)) = Lit (a * b)
     rewrite (Div (Lit a) (Lit b))
-      | b /= 0                    = Lit (a / b)          -- never fold n / 0
-    rewrite (Add e (Lit 0))       = e                    -- x + 0  =  x
-    rewrite (Add (Lit 0) e)       = e                    -- 0 + x  =  x
-    rewrite (Sub e (Lit 0))       = e                    -- x - 0  =  x
+      | b /= 0                    = Lit (a / b)
+    rewrite (Add e (Lit 0))       = e
+    rewrite (Add (Lit 0) e)       = e
+    rewrite (Sub e (Lit 0))       = e
     rewrite (Sub a b)
-      | a == b                    = Lit 0                -- x - x  =  0
-    rewrite (Mul e (Lit 1))       = e                    -- x * 1  =  x
-    rewrite (Mul (Lit 1) e)       = e                    -- 1 * x  =  x
-    rewrite (Mul _ (Lit 0))       = Lit 0                -- x * 0  =  0
-    rewrite (Mul (Lit 0) _)       = Lit 0                -- 0 * x  =  0
-    rewrite (Div e (Lit 1))       = e                    -- x / 1  =  x
-    rewrite (If (BLit True) t _)  = t                    -- known condition
+      | a == b                    = Lit 0
+    rewrite (Mul e (Lit 1))       = e
+    rewrite (Mul (Lit 1) e)       = e
+    rewrite (Mul _ (Lit 0))       = Lit 0
+    rewrite (Mul (Lit 0) _)       = Lit 0
+    rewrite (Div e (Lit 1))       = e
+    rewrite (If (BLit True) t _)  = t
     rewrite (If (BLit False) _ e) = e
     rewrite (Let x _ body)
-      | x `notElem` freeVars body = body                 -- unused binding
+      | x `notElem` freeVars body = body
     rewrite e                     = e
 
--- | Simplify a condition. These rules mirror the short-circuit behaviour
--- of 'evalB', so they never hide an error that evaluation would report.
 simplifyB :: BExpr -> BExpr
 simplifyB = rewriteB . descendB
   where
@@ -191,32 +140,20 @@ simplifyB = rewriteB . descendB
     rewriteB (Not (Not p))           = p
     rewriteB c                       = c
 
-------------------------------------------------------------------------------
--- Part C: higher-order functions over lists of expressions
-------------------------------------------------------------------------------
-
--- | Evaluate many expressions against one shared environment.
---
--- Currying: @eval :: Env -> Expr -> Either String Double@ takes its
--- arguments one at a time, so the partial application @eval env@ is itself
--- a function @Expr -> Either String Double@, which 'map' applies to every
--- expression in the list.
+-- eval env is a partial application of eval
 evalAll :: Env -> [Expr] -> [Either String Double]
 evalAll env = map (eval env)
 
--- | Keep only the results that succeeded (the scaffold's @evalBatch@).
 evalBatch :: Env -> [Expr] -> [Double]
 evalBatch env = rights . evalAll env
 
--- | Summary of evaluating a batch of expressions.
 data BatchReport = BatchReport
-  { succeeded :: Int        -- ^ how many expressions evaluated successfully
-  , failed    :: Int        -- ^ how many produced an error
-  , values    :: [Double]   -- ^ the successful results, in input order
-  , failures  :: [String]   -- ^ the error messages, in input order
+  { succeeded :: Int
+  , failed    :: Int
+  , values    :: [Double]
+  , failures  :: [String]
   } deriving (Eq, Show)
 
--- | Evaluate a batch and count successes versus failures in one 'foldr'.
 batchReport :: Env -> [Expr] -> BatchReport
 batchReport env = foldr tally (BatchReport 0 0 [] []) . evalAll env
   where
@@ -226,8 +163,6 @@ batchReport env = foldr tally (BatchReport 0 0 [] []) . evalAll env
     tally (Left err) r = r { failed    = failed r + 1
                            , failures  = err : failures r }
 
--- | The variables an expression reads from its environment (those not
--- bound by an enclosing @let@), without duplicates.
 freeVars :: Expr -> [String]
 freeVars = nub . go
   where
@@ -238,7 +173,7 @@ freeVars = nub . go
     go (Sub a b)      = go a ++ go b
     go (Mul a b)      = go a ++ go b
     go (Div a b)      = go a ++ go b
-    go (Let x e body) = go e ++ filter (/= x) (go body)   -- x is bound in body
+    go (Let x e body) = go e ++ filter (/= x) (go body)
     go (If c t e)     = goB c ++ go t ++ go e
 
     goB :: BExpr -> [String]
@@ -249,31 +184,19 @@ freeVars = nub . go
     goB (Or p q)    = goB p ++ goB q
     goB (Not p)     = goB p
 
--- | A static check, done without evaluating anything: the free variables
--- of an expression that the environment does not bind. When the result is
--- empty, 'eval' can never fail with "undefined variable"
--- (@prop_staticCheckSound@ in "Props").
 undefinedVars :: Env -> Expr -> [String]
 undefinedVars env = filter (`notElem` bound) . freeVars
   where
     bound = map fst env
 
-------------------------------------------------------------------------------
--- Pretty printing (used in error messages and in the demo output)
-------------------------------------------------------------------------------
+-- Pretty printing
 
--- | Render an expression in ordinary infix notation, adding only the
--- parentheses that operator precedence requires.
 pretty :: Expr -> String
 pretty = prettyPrec 0
 
--- | Render a condition in infix notation.
 prettyB :: BExpr -> String
 prettyB = prettyPrecB 0
 
--- Precedences: if/let 0, (||) 2, (&&) 3, comparisons 4, (+ -) 6, (* /) 7.
--- All binary operators are left-associative, so the right operand is
--- printed one level tighter than the left one.
 prettyPrec :: Int -> Expr -> String
 prettyPrec p (Lit n)
   | n < 0                   = parensIf (p > 0) (showNumber n)
@@ -300,7 +223,6 @@ parensIf :: Bool -> String -> String
 parensIf True  s = "(" ++ s ++ ")"
 parensIf False s = s
 
--- | Whole numbers are shown without a trailing ".0".
 showNumber :: Double -> String
 showNumber n
   | isWhole   = show (round n :: Integer)

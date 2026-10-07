@@ -1,26 +1,12 @@
 {-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -Wall #-}
--- |
--- Module      : TypedExpr
--- Description : Extension: the same language as a GADT.
---
--- 'Expr.Expr' and 'Expr.BExpr' use two separate types to keep numbers and
--- conditions apart. A GADT (generalised algebraic data type) takes the idea
--- further: the index @a@ in @TExpr a@ records the type of value an
--- expression produces, so one type describes both kinds, and GHC still
--- rejects ill-typed expressions at compile time, for example
---
--- > TIf (TNum 1) (TNum 2) (TNum 3)   -- TNum 1 is a TExpr Double, not TExpr Bool
--- > TAdd (TBool True) (TNum 1)       -- TBool True is a TExpr Bool
---
--- The assignment does not require this module; the report mentions it in
--- Part E as the natural next step.
+-- Extra: the same language as a GADT, so ill-typed expressions such as
+-- TIf (TNum 1) (TNum 2) (TNum 3) do not compile.
 module TypedExpr
   ( TExpr (..)
   , evalT
   ) where
 
--- | A typed expression that produces a value of type @a@.
 data TExpr a where
   TNum   :: Double -> TExpr Double
   TBool  :: Bool -> TExpr Bool
@@ -36,9 +22,6 @@ data TExpr a where
   TLet   :: String -> TExpr Double -> TExpr a -> TExpr a
   TIf    :: TExpr Bool -> TExpr a -> TExpr a -> TExpr a
 
--- | One evaluator for every result type: a @TExpr Double@ evaluates to a
--- 'Double' and a @TExpr Bool@ to a 'Bool'. Only the data-dependent errors
--- (division by zero, undefined variable) are left for run time.
 evalT :: [(String, Double)] -> TExpr a -> Either String a
 evalT _   (TNum n)       = Right n
 evalT _   (TBool b)      = Right b
